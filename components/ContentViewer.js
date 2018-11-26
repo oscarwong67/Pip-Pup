@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Image, StyleSheet, Text } from 'react-native';
+import { View, Image, StyleSheet, Text, Button } from 'react-native';
 import { parse } from 'qs';
 
 export default class ContentViewer extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { content: [], test: "https://i.imgur.com/uVG5yrO_d.jpg" };
+    this.state = { content: [], currentIndex: 1 };
   }
   async componentDidMount() {
     // const res = await fetch("https://www.reddit.com/r/aww.json");
@@ -16,18 +16,12 @@ export default class ContentViewer extends React.Component {
           let parsedContent = [];
           resJSON.data.children.forEach((obj) => {
             data = obj.data;       
-            if (data.is_video || data.is_self) return;
+            if (data.is_video || data.is_self || data.url.includes('gifv') || data.url.includes('mp4') || data.url.includes('gfycat')) return;
             parsedContent.push(data.url);
           })    
-          console.log(parsedContent);
-          this.setState({
-            test: parsedContent[3]
-          }, () => {
-            console.log(this.state.test);
-          })
 
           parsedContent = parsedContent.map((link) => {
-            return <Image style={{ width: 100, height: 100 }} source={{ uri: link }} resizeMode='contain' />;
+            return <Image style={styles.image} source={{ uri: link }} resizeMode='contain' />;
           })
           this.setState({
             content: parsedContent
@@ -37,11 +31,27 @@ export default class ContentViewer extends React.Component {
           console.error(err);
         })
   }
+  fetchContent = () => {
+    if (this.state.content.length > 0) {
+      return this.state.content[this.state.currentIndex];
+    } else {
+      return <Text>Loading!</Text>;
+    }
+  }
+  getNextContent = () => {
+    this.setState({
+      currentIndex: this.state.currentIndex + 1
+    })
+  }
   render() {
-    return <View style={styles.container}>
-        {/*this.state.parsedContent*/}
-      <Image style={{ width: 500, height: 500 }} source={{ uri: this.state.test }} resizeMode='cover' />
-      </View>;
+    return (
+      <View style={styles.container}>
+        <View style={styles.container}>{this.fetchContent()}</View>
+        <View style={styles.container}>
+          <Button title="Next!" onPress={this.getNextContent} />
+        </View>
+      </View>
+    );
   }
 }
 
@@ -50,4 +60,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  image: {
+    width: window.width,
+    height: 500,
+  }
 });
