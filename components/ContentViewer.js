@@ -6,7 +6,7 @@ import { Video, Audio } from 'expo';
 export default class ContentViewer extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { content: [], currentIndex: 1 };
+    this.state = { content: [], currentIndex: 0 };
   }
   async componentDidMount() {
     // const res = await fetch("https://www.reddit.com/r/aww.json");
@@ -19,25 +19,26 @@ export default class ContentViewer extends React.Component {
           let parsedContent = [];
           resJSON.data.children.forEach((obj) => {
             data = obj.data;       
+            
+            //  grab and set the source
+            let source;
+            if (data.url.includes('gfycat')) {
+              source = 'gfycat';
+            } else if (data.url.includes('imgur')) {
+              source = 'imgur';
+            } else if (data.url.includes('redd.it')) {
+              source = 'reddit';
+            }
+
             //  ignore self posts and images, and forces sources to be v.reddit, imgur, or gfycat
-            if (data.is_self || (!data.url.includes('gfycat') && !data.url.includes('imgur') && !data.url.includes('redd.it')) ) return;
+            if (data.is_self || ! source) return;
+            data.pipPupSource = source;
             parsedContent.push(data);
           })    
           parsedContent = parsedContent.map((data) => {
+            //  any of these types need to be parsed so that they can be used as a video source
             if (data.is_video || data.url.includes('gifv') || data.url.includes('gfycat')) {
-              let url;
-              if (data.url.includes('gifv')) {
-                url = data.url;
-                url = url.substring(0, url.length - 4) + 'mp4';
-                console.log(url);
-              } else if (data.url.includes('gfycat')) {
-                url = data.url;
-                url = url.substring(0, 8) + url.substring(14, url.length); 
-              } else if (data.is_video) {
-                url = data.media.reddit_video.fallback_url;
-              } else {
-                url = null;
-              }
+              const url = this.parseVideoLinks(data);
               return <Video style={styles.video} source={{ uri: url }} isMuted={false} shouldPlay isLooping usePoster={true} useNativeControls={false} resizeMode="contain" />;
               {/*return <Video style={styles.video} source={{uri: url}} muted={false} repeat={true} resizeMode={"contain"} volume={1.0} rate={1.0} />; */}
             } else {
@@ -52,7 +53,28 @@ export default class ContentViewer extends React.Component {
           console.error(err);
         })
   }
+  parseVideoLinks = (data) => {
+    //  based on the source, process accordingly
+    if (data.pipPupSource == 'imgur') {
+      //  turn Imgur gifV link into mp4
+      url = data.url;
+      url = url.substring(0, url.length - 4) + 'mp4';
+    } else if (data.pipPupSource == 'gfycat') {
+      //  turn gfycat link into just their mp4 link
+      //  their thumbnail link preserves case, where as sometimes reddit url doesn't, so we use this to ensure we get the correct link
+      url = data.media.oembed.thumbnail_url;  
+      //  this is the format to turn thumbs.gfycat.com/TITLE-sizewhatever into giant.gfycat.com/TITLE.mp4
+      url = url.substring(0, 8) + 'giant' + url.substring(14, url.length - 20) + '.mp4';
+    } else if (data.pipPupSource = 'reddit') {
+      //  direct link to reddit video
+      url = data.media.reddit_video.fallback_url;
+    } else {
+      url = null;
+    }
+    return url;
+  }
   fetchContent = () => {
+    //  if there is currently content, grab it!
     if (this.state.content.length > 0) {
       return this.state.content[this.state.currentIndex];
     } else {
