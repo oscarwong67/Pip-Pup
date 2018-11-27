@@ -1,5 +1,5 @@
 {
-  "name": "my-new-project",
+  "name": "pip-pup-app",
   "main": "node_modules/expo/AppEntry.js",
   "private": true,
   "scripts": {
@@ -16,8 +16,7 @@
     "@expo/samples": "2.1.1",
     "expo": "^31.0.2",
     "react": "16.5.0",
-    "react-native": "https://github.com/expo/react-native/archive/sdk-31.0.0.tar.gz",
-    "react-native-video": "^4.0.1",
+    "react-native": "0.57.1",
     "react-navigation": "^2.18.2"
   },
   "devDependencies": {

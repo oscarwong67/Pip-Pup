@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Image, StyleSheet, Text, Button } from 'react-native';
-import { parse } from 'qs';
+import { Video, Audio } from 'expo';
+//import Video from 'react-native-video';
 
 export default class ContentViewer extends React.Component {
   constructor(props) {
@@ -16,12 +17,30 @@ export default class ContentViewer extends React.Component {
           let parsedContent = [];
           resJSON.data.children.forEach((obj) => {
             data = obj.data;       
-            if (data.is_video || data.is_self || data.url.includes('gifv') || data.url.includes('mp4') || data.url.includes('gfycat')) return;
-            parsedContent.push(data.url);
+            //  ignore self posts and images, and forces sources to be v.reddit, imgur, or gfycat
+            if (data.is_self || (!data.url.includes('gfycat') && !data.url.includes('imgur') && !data.url.includes('redd.it')) ) return;
+            parsedContent.push(data);
           })    
-
-          parsedContent = parsedContent.map((link) => {
-            return <Image style={styles.image} source={{ uri: link }} resizeMode='contain' />;
+          parsedContent = parsedContent.map((data) => {
+            if (data.is_video || data.url.includes('gifv') || data.url.includes('gfycat')) {
+              let url;
+              if (data.url.includes('gifv')) {
+                url = data.url;
+                url = url.substring(0, url.length - 4) + 'mp4';
+                console.log(url);
+              } else if (data.url.includes('gfycat')) {
+                url = data.url;
+                url = url.substring(0, 8) + url.substring(14, url.length); 
+              } else if (data.is_video) {
+                url = data.media.reddit_video.fallback_url;
+              } else {
+                url = null;
+              }
+              return <Video style={styles.video} source={{ uri: url }} isMuted={false} shouldPlay isLooping usePoster={true} useNativeControls={false} resizeMode="contain" />;
+              {/*return <Video style={styles.video} source={{uri: url}} muted={false} repeat={true} resizeMode={"contain"} volume={1.0} rate={1.0} />; */}
+            } else {
+              return <Image style={styles.image} source={{ uri: data.url }} resizeMode="contain" />;
+            }
           })
           this.setState({
             content: parsedContent
@@ -62,6 +81,10 @@ const styles = StyleSheet.create({
   },
   image: {
     width: window.width,
-    height: 500,
+    height: 650,
+  },
+  video: {
+    width: window.width,
+    height: 650
   }
 });
