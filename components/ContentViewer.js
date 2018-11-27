@@ -14,6 +14,8 @@ export default class ContentViewer extends React.Component {
     fetch("https://www.reddit.com/r/aww.json")
       .then((res) => res.json())
         .then((resJSON) => {
+          if (!resJSON)
+            return;
           let parsedContent = [];
           resJSON.data.children.forEach((obj) => {
             data = obj.data;       
