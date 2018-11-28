@@ -37,7 +37,7 @@ export default class ContentViewer extends React.Component {
           })    
           parsedContent = parsedContent.map((data) => {
             //  any of these types need to be parsed so that they can be used as a video source
-            if (data.is_video || data.url.includes('gifv') || data.url.includes('gfycat')) {
+            if (data.is_video || data.url.includes('gifv') || data.pipPupSource == 'gfycat') {
               const url = this.parseVideoLinks(data);
               return <Video style={styles.video} source={{ uri: url }} isMuted={false} shouldPlay isLooping usePoster={true} useNativeControls={false} resizeMode="contain" />;
               {/*return <Video style={styles.video} source={{uri: url}} muted={false} repeat={true} resizeMode={"contain"} volume={1.0} rate={1.0} />; */}
@@ -54,15 +54,14 @@ export default class ContentViewer extends React.Component {
         })
   }
   parseVideoLinks = (data) => {
+    let url = data.url;
     //  based on the source, process accordingly
     if (data.pipPupSource == 'imgur') {
       //  turn Imgur gifV link into mp4
-      url = data.url;
       url = url.substring(0, url.length - 4) + 'mp4';
     } else if (data.pipPupSource == 'gfycat') {
       //  turn gfycat link into just their mp4 link
       //  their thumbnail link preserves case, where as sometimes reddit url doesn't, so we use this to ensure we get the correct link
-      url = data.media.oembed.thumbnail_url;  
       //  this is the format to turn thumbs.gfycat.com/TITLE-sizewhatever into giant.gfycat.com/TITLE.mp4
       url = url.substring(0, 8) + 'giant' + url.substring(14, url.length - 20) + '.mp4';
     } else if (data.pipPupSource = 'reddit') {
@@ -71,15 +70,21 @@ export default class ContentViewer extends React.Component {
     } else {
       url = null;
     }
+    console.log(url);
     return url;
   }
   fetchContent = () => {
+    let res;
     //  if there is currently content, grab it!
     if (this.state.content.length > 0) {
-      return this.state.content[this.state.currentIndex];
+      res = this.state.content[this.state.currentIndex];
     } else {
-      return <Text>Loading!</Text>;
+      res = <Text>Loading!</Text>;
     }
+
+    return (
+      <View style={{flex: 0.9}}>{ res }</View>
+    )
   }
   getNextContent = () => {
     this.setState({
