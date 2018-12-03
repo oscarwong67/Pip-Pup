@@ -5,6 +5,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
+    "android-dev": "adb reverse tcp:8097 tcp:8097 && react-devtools",
     "ios": "expo start --ios",
     "eject": "expo eject",
     "test": "node ./node_modules/jest/bin/jest.js --watchAll"
@@ -15,8 +16,10 @@
   "dependencies": {
     "@expo/samples": "2.1.1",
     "expo": "^31.0.2",
+    "expokit": "^31.0.2",
     "react": "16.5.0",
     "react-native": "0.57.1",
+    "react-native-video": "^4.0.1",
     "react-navigation": "^2.18.2"
   },
   "devDependencies": {

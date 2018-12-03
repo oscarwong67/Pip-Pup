@@ -1,7 +1,6 @@
 import React from 'react';
-import { View, Image, StyleSheet, Text, Button } from 'react-native';
-import { Video, Audio } from 'expo';
-//import Video from 'react-native-video';
+import { View, Dimensions, Image, StyleSheet, Text, Button } from 'react-native';
+import Video from 'react-native-video';
 
 export default class ContentViewer extends React.Component {
   constructor(props) {
@@ -11,7 +10,7 @@ export default class ContentViewer extends React.Component {
   async componentDidMount() {
     // const res = await fetch("https://www.reddit.com/r/aww.json");
     // const resJSON = await res.json()
-    fetch("https://www.reddit.com/r/aww.json")
+    fetch("https://www.reddit.com/r/gifs.json")
       .then((res) => res.json())
         .then((resJSON) => {
           if (!resJSON)
@@ -36,11 +35,11 @@ export default class ContentViewer extends React.Component {
             parsedContent.push(data);
           })    
           parsedContent = parsedContent.map((data) => {
+            //console.log(data.url);
             //  any of these types need to be parsed so that they can be used as a video source
             if (data.is_video || data.url.includes('gifv') || data.pipPupSource == 'gfycat') {
               const url = this.parseVideoLinks(data);
-              return <Video style={styles.video} source={{ uri: url }} isMuted={false} shouldPlay isLooping usePoster={true} useNativeControls={false} resizeMode="contain" />;
-              {/*return <Video style={styles.video} source={{uri: url}} muted={false} repeat={true} resizeMode={"contain"} volume={1.0} rate={1.0} />; */}
+              return <Video style={styles.video} source={{uri: url}} muted={false} repeat={true} resizeMode={"contain"} volume={1.0} rate={1.0} />;
             } else {
               return <Image style={styles.image} source={{ uri: data.url }} resizeMode="contain" />;
             }
@@ -69,8 +68,7 @@ export default class ContentViewer extends React.Component {
       url = data.media.reddit_video.fallback_url;
     } else {
       url = null;
-    }
-    console.log(url);
+    }    
     return url;
   }
   fetchContent = () => {
@@ -83,19 +81,22 @@ export default class ContentViewer extends React.Component {
     }
 
     return (
-      <View style={{flex: 0.9}}>{ res }</View>
+      <View style={{ flex: 1, justifyContent: 'center' }}>{ res }</View>
     )
   }
   getNextContent = () => {
     this.setState({
       currentIndex: this.state.currentIndex + 1
+    }, () => {
+      console.log(this.state.content[this.state.currentIndex]);
     })
   }
   render() {
     return (
-      <View style={styles.container}>
-        <View style={styles.container}>{this.fetchContent()}</View>
-        <View style={styles.container}>
+      <View style={{ width: "100%", height: "100%", flex: 1 }}>
+        <View style={{ flex: 0.7, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>{this.fetchContent()}</View>
+        <View style={{ flex: 0.1 }} />
+        <View style={{ flex: 0.1, paddingHorizontal: 10 }}>
           <Button title="Next!" onPress={this.getNextContent} />
         </View>
       </View>
@@ -109,11 +110,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   image: {
-    width: window.width,
+    width: Dimensions.get('window').width,
     height: 650,
   },
   video: {
-    width: window.width,
+    width: Dimensions.get('window').width,
     height: 650
   }
 });
