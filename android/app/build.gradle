@@ -153,11 +153,11 @@ dependencies {
   implementation 'com.facebook.soloader:soloader:0.5.1'
 
   implementation 'com.google.android.exoplayer:exoplayer:2.9.1'
-  implementation 'expolib_v1.com.google.android.exoplayer:expolib_v1-extension-okhttp:2.9.1@aar'
+  //implementation 'expolib_v1.com.google.android.exoplayer:expolib_v1-extension-okhttp:2.9.1@aar'
 
   // expo-file-system
-  implementation 'com.squareup.okhttp3:okhttp:3.10.0'
-  implementation 'com.squareup.okhttp3:okhttp-urlconnection:3.10.0'
+  implementation 'com.squareup.okhttp3:okhttp:3.12.0'
+  implementation 'com.squareup.okhttp3:okhttp-urlconnection:3.12.0'
 
   // Testing
   androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
@@ -180,7 +180,6 @@ dependencies {
     exclude group: 'com.squareup.okhttp3', module: 'okhttp'
     exclude group: 'com.squareup.okhttp3', module: 'okhttp-urlconnection'
   }
-  compile project(':react-native-video')
 }
 
 // This has to be down here for some reason

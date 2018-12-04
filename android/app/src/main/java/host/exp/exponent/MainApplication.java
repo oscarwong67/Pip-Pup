@@ -2,11 +2,12 @@ package host.exp.exponent;
 
 
 import com.facebook.react.ReactPackage;
+import com.facebook.react.shell.MainReactPackage;
 
 import java.util.Arrays;
 import java.util.List;
 
-import expolib_v1.okhttp3.OkHttpClient;
+import okhttp3.*;
 
 // Needed for `react-native link`
 // import com.facebook.react.ReactApplication;
@@ -21,7 +22,7 @@ public class MainApplication extends ExpoApplication {
 
   // Needed for `react-native link`
   protected List<ReactPackage> getPackages() {
-    return Arrays.asList(
+    return Arrays.<ReactPackage>asList(
             new MainReactPackage(),
             new ReactVideoPackage()
     );
