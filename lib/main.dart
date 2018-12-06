@@ -1,106 +1,69 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:english_words/english_words.dart';
+import 'package:http/http.dart' as http;
 
 void main() => runApp(new MyApp());
 
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final wordPair = new WordPair.random();
     return new MaterialApp(
-        title: 'Welcome to PipPup',
-        home: new RandomWords()
+        title: 'PipPup',
+        home: new ContentViewer()
     );
   }
 }
 
-class RandomWordsState extends State<RandomWords> {
-  final List<WordPair> _suggestions = <WordPair>[];
-  final Set<WordPair> _saved = new Set<WordPair>();
-  final TextStyle _biggerFont = const TextStyle(fontSize: 18.0);
+class ContentViewerState extends State<ContentViewer> {
+  List<MediaObject> mediaObjects = <MediaObject>[];
 
-  Widget _buildSuggestions() {
-    return new ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemBuilder: (BuildContext _context, int i) {
-        if (i.isOdd) {
-          return new Divider();
-        }
-
-        final int index = i ~/ 2;
-        if (index >= _suggestions.length) {
-          _suggestions.addAll(generateWordPairs().take(10));
-        }
-        return _buildRow(_suggestions[index]);
-      },
-    );
+  Future<Null> _fetchLinks() async {
+    final res = await http.get('https://www.reddit.com/r/aww.json');
+    if (res.statusCode == 200) {
+      final List<dynamic> data = json.decode(res.body)['data']['children'];
+      this.mediaObjects = data.map<MediaObject>((json) => MediaObject.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to fetch data from reddit!');
+    }
+    return null;
   }
 
-  Widget _buildRow(WordPair pair) {
-    final bool alreadySaved = _saved.contains(pair);
-    return new ListTile(
-      title: new Text(pair.asPascalCase, style: _biggerFont),
-      trailing: new Icon(
-        alreadySaved ? Icons.favorite : Icons.favorite_border,
-        color: alreadySaved ? Colors.red : null,
-      ),
-      onTap: () {
-        setState(() {
-          if (alreadySaved)
-            _saved.remove(pair);
-          else
-            _saved.add(pair);
-        });
-      }
-    );
-  }
-
-  void _pushSaved() {
-    Navigator.of(context).push(
-      new MaterialPageRoute<void>(
-        builder: (BuildContext context) {
-          final Iterable<ListTile> tiles = _saved.map(
-            (WordPair pair) {
-              return new ListTile(
-                title: new Text(
-                  pair.asPascalCase,
-                  style: _biggerFont
-                )
-              );
-            }
-          );
-          final List<Widget> divided = ListTile
-            .divideTiles(
-              context: context,
-              tiles: tiles,
-            ).toList();
-
-            return new Scaffold(
-              appBar: new AppBar(
-                title: const Text('Saved Suggestions'),
-              ),
-              body: new ListView(children: divided)
-            );
-        }
-      )
-    );
+  void _renderCurrentContent() {
+    //
   }
 
   @override
   Widget build(BuildContext context) {
-    return new Scaffold (
+    return new Scaffold(
       appBar: new AppBar(
-        title: new Text('Startup Name Generator'),
+        title: new Text('Welcome to PipPup!'),
         actions: <Widget>[
-          new IconButton(icon: const Icon(Icons.list), onPressed: _pushSaved),
+          new IconButton(icon: const Icon(Icons.list), onPressed: _fetchLinks),
         ],
-      ),      
-      body: _buildSuggestions(),      
+      ),
+      //body: _renderCurrentContent(),
     );
   }
 }
 
-class RandomWords extends StatefulWidget {
+class ContentViewer extends StatefulWidget {
   @override
-  RandomWordsState createState() => new RandomWordsState();
+  ContentViewerState createState() => new ContentViewerState();
+}
+
+class MediaObject {
+  final String url;
+  final String redditVideoUrl;
+
+  MediaObject({this.url, this.redditVideoUrl});
+
+  //  need to handle link parsing/checking etc.
+  factory MediaObject.fromJson(Map<String, dynamic> json) {
+    return MediaObject(
+      url: json['data']['url'],
+      redditVideoUrl: json['data']['media'] != null ? json['data']['media']['reddit_video']['fallback_url'] : null,
+    );
+  }
 }
