@@ -11,7 +11,9 @@ class ContentViewerState extends State<ContentViewer> {
       5; //  our current chunk size is gonna be 5 for how much content to render at once
 
   List<MediaObject> mediaObjects = <MediaObject>[];
-  List<MediaObject> mediaToRender = <MediaObject>[];
+  List<MediaObject> mediaToRender = <MediaObject>[];  
+  VideoPlayerController videoController;
+  VideoPlayerController audioController;
   int currentIndex;
 
   //  fetches data from reddit, then parses it
@@ -23,7 +25,7 @@ class ContentViewerState extends State<ContentViewer> {
           data.map<MediaObject>((json) => MediaObject.fromJson(json)).toList();
       mediaObjects = mediaObjects.where((obj) => obj != null).toList();
 
-      _generateMediaToRender(); //  TODO: should move this eventually
+      _generateMediaToRender(); //  TODO: should move this eventually, probably shouldn't be handled here.
     } else {
       throw Exception('Failed to fetch data from reddit!');
     }
@@ -32,15 +34,42 @@ class ContentViewerState extends State<ContentViewer> {
 
   // build a single video
   Widget _buildVideo(MediaObject mediaObj) {
-    VideoPlayerController controller = new VideoPlayerController.network(
-          mediaObj.url);
-    controller.setVolume(1.0);
-    return new Chewie(
-      controller,
-      autoPlay: true,
-      looping: true,
-      aspectRatio: mediaObj.width / mediaObj.height,
-
+    videoController =
+        new VideoPlayerController.network(mediaObj.url);
+    if (mediaObj.source == ContentSource.REDDIT)
+      audioController =
+        new VideoPlayerController.network(mediaObj.audioUrl);
+    videoController.setVolume(1.0);
+    videoController.addListener(() {
+      if (videoController.value.isPlaying && mediaObj.audioUrl.length > 0) {
+        if (! audioController.value.initialized) {
+          audioController.initialize().then((_) {
+            audioController.play();
+          });
+        } else {
+          audioController.play();
+        }
+      }
+    });
+    return new Stack(
+      children: <Widget>[
+        new Chewie(
+          videoController,
+          autoPlay: true,
+          looping: true,
+          aspectRatio: mediaObj.width / mediaObj.height,
+          showControls: false,  //  TODO: write custom controls that also pause/play the audio at the same time.
+        ),
+        (mediaObj.source == ContentSource.REDDIT) ? new Opacity(
+          opacity: 0.0,
+          child: new Chewie(
+            audioController,
+            autoPlay: false,
+            looping: true,
+            showControls: false,
+          ),
+        ) : null,
+      ],
     );
   }
 
@@ -85,6 +114,10 @@ class ContentViewerState extends State<ContentViewer> {
     setState(() {
       this.currentIndex++;
     });
+    if (audioController.value.isPlaying)
+      audioController.pause();
+    if (videoController.value.isPlaying)
+      videoController.pause();   
 
     if (currentIndex % CHUNK_SIZE == 0) {
       _generateMediaToRender();
@@ -96,7 +129,7 @@ class ContentViewerState extends State<ContentViewer> {
     super.initState();
     currentIndex = 0;
     mediaToRender = new List(CHUNK_SIZE);
-    _fetchLinks();
+    _fetchLinks();    
   }
 
   @override
@@ -120,12 +153,19 @@ class ContentViewer extends StatefulWidget {
 
 class MediaObject {
   final String url;
+  final String audioUrl;
   final ContentSource source;
   final ContentType type;
   final int width;
   final int height;
 
-  MediaObject({this.url, this.source, this.type, this.width, this.height});
+  MediaObject(
+      {this.url,
+      this.audioUrl,
+      this.source,
+      this.type,
+      this.width,
+      this.height});
 
   //  need to handle link parsing/checking etc.
   factory MediaObject.fromJson(Map<String, dynamic> json) {
@@ -144,17 +184,28 @@ class MediaObject {
       width = dimensions['width'];
       height = dimensions['height'];
     }
-    return MediaObject(url: url, source: source, type: type, width: width, height: height);
+    String audioUrl = "";
+    if (source == ContentSource.REDDIT && type == ContentType.VIDEO && ! json['data']['media']['reddit_video']['is_gif']) {
+      audioUrl = json['data']['url'] + '/audio';
+    }
+    return MediaObject(
+        url: url,
+        audioUrl: audioUrl,
+        source: source,
+        type: type,
+        width: width,
+        height: height);
   }
 
-  static Map<String, int> _parseDimensions(Map<String, dynamic> json, ContentSource source) {
+  static Map<String, int> _parseDimensions(
+      Map<String, dynamic> json, ContentSource source) {
     Map<String, dynamic> media = json['data']['media'];
     Map<String, int> res = new Map();
     Map<String, dynamic> sourceInfoMap;
     if (source == ContentSource.GFYCAT) {
       sourceInfoMap = media['oembed'];
     } else if (source == ContentSource.REDDIT) {
-      sourceInfoMap = media['reddit_video'];      
+      sourceInfoMap = media['reddit_video'];
     } else {
       throw new Exception('Source specified is not Gfycat or Reddit Video.');
     }
@@ -164,7 +215,7 @@ class MediaObject {
     return res;
   }
 
-   static String _parseSpecialType(
+  static String _parseSpecialType(
       Map<String, dynamic> json, String url, ContentType type) {
     if (type == ContentType.GFY) {
       final String url = json['data']['media']['oembed']['thumbnail_url'];
@@ -209,7 +260,6 @@ class MediaObject {
     return ContentType
         .IMAGE; //  this should be more thorough if we do it on the backend
   }
-
 }
 
 enum ContentSource { GFYCAT, IMGUR, REDDIT, OTHER }
