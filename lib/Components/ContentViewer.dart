@@ -5,13 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:flutter_advanced_networkimage/flutter_advanced_networkimage.dart';
+import 'package:flutter_advanced_networkimage/transition_to_image.dart';
 
 class ContentViewerState extends State<ContentViewer> {
   static const int CHUNK_SIZE =
       5; //  our current chunk size is gonna be 5 for how much content to render at once
 
   List<MediaObject> mediaObjects = <MediaObject>[];
-  List<MediaObject> mediaToRender = <MediaObject>[];  
+  List<MediaObject> mediaToRender = <MediaObject>[];
   VideoPlayerController videoController;
   VideoPlayerController audioController;
   int currentIndex;
@@ -34,15 +36,13 @@ class ContentViewerState extends State<ContentViewer> {
 
   // build a single video
   Widget _buildVideo(MediaObject mediaObj) {
-    videoController =
-        new VideoPlayerController.network(mediaObj.url);
+    videoController = new VideoPlayerController.network(mediaObj.url);
     if (mediaObj.source == ContentSource.REDDIT)
-      audioController =
-        new VideoPlayerController.network(mediaObj.audioUrl);
+      audioController = new VideoPlayerController.network(mediaObj.audioUrl);
     videoController.setVolume(1.0);
     videoController.addListener(() {
       if (videoController.value.isPlaying && mediaObj.audioUrl.length > 0) {
-        if (! audioController.value.initialized) {
+        if (!audioController.value.initialized) {
           audioController.initialize().then((_) {
             audioController.play();
           });
@@ -58,18 +58,22 @@ class ContentViewerState extends State<ContentViewer> {
           autoPlay: true,
           looping: true,
           aspectRatio: mediaObj.width / mediaObj.height,
-          showControls: false,  //  TODO: write custom controls that also pause/play the audio at the same time.
+          showControls: false,
+          placeholder: Center(child: CircularProgressIndicator()), //  TODO: write custom controls that also pause/play the audio at the same time.
         ),
-        (mediaObj.source == ContentSource.REDDIT) ? new Opacity(
-          opacity: 0.0,
-          child: new Chewie(
-            audioController,
-            autoPlay: false,
-            looping: true,
-            showControls: false,
-          ),
-        ) : null,
-      ],
+        (mediaObj.source == ContentSource.REDDIT)
+            ? new Opacity(
+                opacity: 0.0,
+                child: new Chewie(
+                  audioController,
+                  autoPlay: false,
+                  looping: true,
+                  showControls: false,
+                ),
+              )
+            : null,
+        //  if the current source isn't reddit, then playing audio seperately isn't a problem, but "null" isn't a valid child widget value so filter it
+      ].where((child) => child != null).toList(),
     );
   }
 
@@ -80,7 +84,9 @@ class ContentViewerState extends State<ContentViewer> {
       MediaObject mediaObj = mediaToRender[currentIndex % CHUNK_SIZE];
 
       if (mediaObj.type == ContentType.IMAGE) {
-        content = Image.network(mediaObj.url);
+        content = TransitionToImage(
+            AdvancedNetworkImage(mediaObj.url, useDiskCache: false),
+            placeholder: new CircularProgressIndicator());
       } else if (mediaObj.type == ContentType.GFY ||
           mediaObj.type == ContentType.GIFV ||
           mediaObj.type == ContentType.VIDEO) {
@@ -114,10 +120,8 @@ class ContentViewerState extends State<ContentViewer> {
     setState(() {
       this.currentIndex++;
     });
-    if (audioController.value.isPlaying)
-      audioController.pause();
-    if (videoController.value.isPlaying)
-      videoController.pause();   
+    if (audioController.value.isPlaying) audioController.pause();
+    if (videoController.value.isPlaying) videoController.pause();
 
     if (currentIndex % CHUNK_SIZE == 0) {
       _generateMediaToRender();
@@ -129,7 +133,7 @@ class ContentViewerState extends State<ContentViewer> {
     super.initState();
     currentIndex = 0;
     mediaToRender = new List(CHUNK_SIZE);
-    _fetchLinks();    
+    _fetchLinks();
   }
 
   @override
@@ -174,7 +178,8 @@ class MediaObject {
     ContentType type = _parseForType(json, url, source);
     int width = 0, height = 0;
     //  reddit api doesn't give aspect ratio of GIFVs, and that won't get us a good aspect ratio so I've decided to leave it out for now
-    //  TODO: ADD PROPER GIFV SUPPORT - NOTE: THIS IS THE ONLY PLACE I HAVE HERE THAT ACTUALLY FILTERS IT OUT, ALL OTHER GIFV CODE IS INTACT
+    //  TODO: ADD PROPER GIFV SUPPORT, maybe by figuring out to how to handle videoController.value.size
+    //       - NOTE: THIS IS THE ONLY PLACE I HAVE HERE THAT ACTUALLY FILTERS GIFV OUT, ALL OTHER GIFV CODE IS INTACT, but only some of the code needed to make it work exists rn
     if (source == ContentSource.OTHER || type == ContentType.GIFV) {
       return null;
     }
@@ -185,7 +190,9 @@ class MediaObject {
       height = dimensions['height'];
     }
     String audioUrl = "";
-    if (source == ContentSource.REDDIT && type == ContentType.VIDEO && ! json['data']['media']['reddit_video']['is_gif']) {
+    if (source == ContentSource.REDDIT &&
+        type == ContentType.VIDEO &&
+        !json['data']['media']['reddit_video']['is_gif']) {
       audioUrl = json['data']['url'] + '/audio';
     }
     return MediaObject(
