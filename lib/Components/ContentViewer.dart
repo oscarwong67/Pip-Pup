@@ -15,8 +15,12 @@ class ContentViewerState extends State<ContentViewer> {
   List<MediaObject> mediaObjects = <MediaObject>[];
   List<Widget> pages = <Widget>[];
   final PageController pageController = new PageController();
-  VideoPlayerController videoController;
-  VideoPlayerController audioController;
+  VideoPlayerController previousVideoController;
+  VideoPlayerController currentVideoController;
+  VideoPlayerController nextVideoController;
+  VideoPlayerController previousAudioController;
+  VideoPlayerController currentAudioController;
+  VideoPlayerController nextAudioController;
   int currentIndex;
   int currentPage;
 
@@ -38,36 +42,56 @@ class ContentViewerState extends State<ContentViewer> {
 
   //  go to next piece of content and handle if you need to go to the next chunk
   void _movePage(int pageId) {
-    if (pageId > this.currentPage) {
-      //  swipe down
+    List<Widget> newPages = new List(CHUNK_SIZE);
+    //  swipe down
+    if (pageId > this.currentPage) {      
       this.currentIndex++;
+
+      this.previousAudioController = this.currentAudioController;
+      this.previousVideoController = this.currentVideoController;
+      this.currentAudioController = this.nextAudioController; 
+      this.currentVideoController = this.nextVideoController;
+
+      newPages[0] = this.pages.length >= 3 ? this.pages[1] : this.pages[0]; //  if it's less than 3, that means '0' or "previous" didn't exist before
+      newPages[1] = this.pages.length >= 3 ? this.pages[2] : _renderCurrentContent(this.currentIndex, 1);
+      newPages[2] = _renderCurrentContent(this.currentIndex + 1, 2);
     } else if (pageId < this.currentPage) {
       this.currentIndex--;
-    }
-    List<Widget> newPages = new List(CHUNK_SIZE);
-    newPages[0] = _renderCurrentContent(this.currentIndex - 1);
-    newPages[1] = _renderCurrentContent(this.currentIndex);
-    newPages[2] = _renderCurrentContent(this.currentIndex + 1);
+
+      this.nextAudioController = this.currentAudioController;
+      this.nextVideoController = this.currentVideoController;
+      this.currentAudioController = this.previousAudioController;     
+      this.currentVideoController = this.previousVideoController; 
+
+      newPages[0] = _renderCurrentContent(this.currentIndex - 1, 0);
+      newPages[1] = this.pages.length >= 3 ? this.pages[0] : _renderCurrentContent(this.currentIndex, 1);
+      newPages[2] = this.pages[1]; 
+    } else {
+      newPages = this.pages;
+    } 
+    
+    newPages = newPages.where((child) => child != null).toList();
+
     setState(() {
-      this.pages = newPages.where((child) => child != null).toList();
-    });
-    this.currentPage = ((this.pages.length - 1) / 2).floor();
-    pageController.jumpToPage(this.currentPage);
+      this.pages = newPages;
+      this.currentPage = ((this.pages.length - 1) / 2).floor();
+      pageController.jumpToPage(this.currentPage);
+    });    
 
-    if (videoController != null && videoController.value.isPlaying)
-      videoController.pause();
-    if (audioController != null && audioController.value.isPlaying)
-      audioController.pause();
+    _pauseIfNeeded(previousVideoController);
+    _pauseIfNeeded(previousAudioController);
+    _pauseIfNeeded(nextVideoController);
+    _pauseIfNeeded(nextAudioController);
 
-    print(this.currentIndex);
+    if (this.currentVideoController != null) {
+      this.currentVideoController.play();
+    }
   }
 
   // build a single video
-  Widget _buildVideo(MediaObject mediaObj) {
-    if (this.mediaObjects[this.currentIndex].url == mediaObj.url) {
-      setState(() {
-        videoController = new VideoPlayerController.network(mediaObj.url);
-      });
+  Widget _buildVideo(MediaObject mediaObj, int pageIndex) {
+    VideoPlayerController videoController = new VideoPlayerController.network(mediaObj.url);
+    VideoPlayerController audioController;
       //  Reddit videos have audio hosted seperately, so we need to play both at once
       if (mediaObj.source == ContentSource.REDDIT)
         audioController = new VideoPlayerController.network(mediaObj.audioUrl);
@@ -83,11 +107,23 @@ class ContentViewerState extends State<ContentViewer> {
           }
         }
       });
+
+      if (pageIndex == 0) {
+        this.previousVideoController = videoController;
+        this.previousAudioController = audioController;
+      } else if (pageIndex == 1) {
+        this.currentVideoController = videoController;
+        this.currentAudioController = audioController;
+      } else if (pageIndex == 2) {
+        this.nextVideoController = videoController;
+        this.nextAudioController = audioController;
+      }
+
       return new Stack(
         children: <Widget>[
           new Chewie(
             videoController,
-            autoPlay: true,
+            autoPlay: false,
             autoInitialize: true,
             looping: true,
             aspectRatio: mediaObj.width / mediaObj.height,
@@ -110,14 +146,11 @@ class ContentViewerState extends State<ContentViewer> {
               : null,
           //  if the current source isn't reddit, then playing audio seperately isn't a problem, but "null" isn't a valid child widget value so filter it
         ].where((child) => child != null).toList(), //  remove null children
-      );
-    } else {
-      return new Center(child: CircularProgressIndicator());  //TODO: for videos, generate thumbnail url as "placeholder" OR implement a solution so you can have up to 3 PRE-INITIALIZED video controllers at a time
-    }
+      );      
   }
 
   //  create a list of content of size CHUNK_SIZE
-  Widget _renderCurrentContent(int index) {
+  Widget _renderCurrentContent(int index, int pageIndex) {
     if (index >= 0 &&
         index < mediaObjects.length &&
         mediaObjects[index] != null) {
@@ -131,7 +164,7 @@ class ContentViewerState extends State<ContentViewer> {
       } else if (mediaObj.type == ContentType.GFY ||
           mediaObj.type == ContentType.GIFV ||
           mediaObj.type == ContentType.VIDEO) {
-        content = _buildVideo(mediaObjects[index]);
+        content = _buildVideo(mediaObjects[index], pageIndex);
       } else {
         throw new Exception('Invalid Content Type! What the heck!');
       }
@@ -143,10 +176,10 @@ class ContentViewerState extends State<ContentViewer> {
 
   Widget _renderCurrentPage() {
     if (this.pages.isEmpty) {
+      //  skip "previous" since you're at the beginning
       this.pages = <Widget>[
-        _renderCurrentContent(this.currentIndex - 1),
-        _renderCurrentContent(this.currentIndex),
-        _renderCurrentContent(this.currentIndex + 1)
+        _renderCurrentContent(this.currentIndex, 1),
+        _renderCurrentContent(this.currentIndex + 1, 2),
       ].where((child) => child != null).toList();
     }
     return new PageView(
@@ -159,11 +192,16 @@ class ContentViewerState extends State<ContentViewer> {
     );
   }
 
+  void _pauseIfNeeded(VideoPlayerController controller) {
+    if (controller != null && controller.value.isPlaying)
+      controller.pause();
+  }
+
   // @override
   // void dispose() {
   //   super.dispose();
-  //   audioController.dispose();
-  //   videoController.dispose();
+  //   currentAudioController.dispose();
+  //   currentVideoController.dispose();
   // }
 
   @override
@@ -213,7 +251,7 @@ class MediaObject {
     ContentType type = _parseForType(json, url, source);
     int width = 0, height = 0;
     //  reddit api doesn't give aspect ratio of GIFVs, and that won't get us a good aspect ratio so I've decided to leave it out for now
-    //  TODO: ADD PROPER GIFV SUPPORT, maybe by figuring out to how to handle videoController.value.size
+    //  TODO: ADD PROPER GIFV SUPPORT, maybe by figuring out to how to handle currentVideoController.value.size
     //       - NOTE: THIS IS THE ONLY PLACE I HAVE HERE THAT ACTUALLY FILTERS GIFV OUT, ALL OTHER GIFV CODE IS INTACT, but only some of the code needed to make it work exists rn
     if (source == ContentSource.OTHER || type == ContentType.GIFV) {
       return null;
