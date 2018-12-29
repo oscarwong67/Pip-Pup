@@ -38,28 +38,27 @@ class ContentViewerState extends State<ContentViewer> {
 
   //  go to next piece of content and handle if you need to go to the next chunk
   void _movePage(int pageId) {
+    List<Widget> newPages = new List(CHUNK_SIZE);
+    //  swipe down
     if (pageId > this.currentPage) {
-      //  swipe down
       this.currentIndex++;
     } else if (pageId < this.currentPage) {
       this.currentIndex--;
+    } else {
+      newPages = this.pages;
     }
-    List<Widget> newPages = new List(CHUNK_SIZE);
     newPages[0] = _renderCurrentContent(this.currentIndex - 1);
     newPages[1] = _renderCurrentContent(this.currentIndex);
     newPages[2] = _renderCurrentContent(this.currentIndex + 1);
+
+    newPages = newPages.where((child) => child != null).toList();
+
     setState(() {
-      this.pages = newPages.where((child) => child != null).toList();
+      this.pages = newPages;
+      this.currentPage = ((this.pages.length - 1) / 2).floor();
+      pageController.animateToPage(this.currentPage,
+          duration: const Duration(milliseconds: 300), curve: Curves.decelerate);
     });
-    this.currentPage = ((this.pages.length - 1) / 2).floor();
-    pageController.jumpToPage(this.currentPage);
-
-    if (videoController != null && videoController.value.isPlaying)
-      videoController.pause();
-    if (audioController != null && audioController.value.isPlaying)
-      audioController.pause();
-
-    print(this.currentIndex);
   }
 
   // build a single video
@@ -112,7 +111,8 @@ class ContentViewerState extends State<ContentViewer> {
         ].where((child) => child != null).toList(), //  remove null children
       );
     } else {
-      return new Center(child: CircularProgressIndicator());  //TODO: for videos, generate thumbnail url as "placeholder" OR implement a solution so you can have up to 3 PRE-INITIALIZED video controllers at a time
+      return new TransitionToImage(
+          AdvancedNetworkImage(mediaObj.videoThumbUrl, useDiskCache: false));
     }
   }
 
@@ -143,11 +143,14 @@ class ContentViewerState extends State<ContentViewer> {
 
   Widget _renderCurrentPage() {
     if (this.pages.isEmpty) {
+      //  skip "previous" since you're at the beginning
       this.pages = <Widget>[
-        _renderCurrentContent(this.currentIndex - 1),
         _renderCurrentContent(this.currentIndex),
-        _renderCurrentContent(this.currentIndex + 1)
+        _renderCurrentContent(this.currentIndex + 1),
       ].where((child) => child != null).toList();
+      if (this.videoController != null) {
+        this.videoController.play();
+      }
     }
     return new PageView(
       children: this.pages,
@@ -159,11 +162,17 @@ class ContentViewerState extends State<ContentViewer> {
     );
   }
 
+  void _pauseIfNeeded(VideoPlayerController controller) {
+    if (controller != null &&
+        controller.value.initialized &&
+        controller.value.isPlaying) controller.pause();
+  }
+
   // @override
   // void dispose() {
   //   super.dispose();
-  //   audioController.dispose();
-  //   videoController.dispose();
+  //   currentAudioController.dispose();
+  //   currentVideoController.dispose();
   // }
 
   @override
@@ -179,9 +188,19 @@ class ContentViewerState extends State<ContentViewer> {
     return new Scaffold(
       appBar: new AppBar(
         title: new Text('Welcome to PipPup!'),
+        actions: <Widget>[
+          new IconButton(
+            icon: const Icon(Icons.list),
+            onPressed: _debug,
+          )
+        ],
       ),
       body: _renderCurrentPage(),
     );
+  }
+
+  void _debug() {
+    print('yo');
   }
 }
 
@@ -193,6 +212,7 @@ class ContentViewer extends StatefulWidget {
 class MediaObject {
   final String url;
   final String audioUrl;
+  final String videoThumbUrl;
   final ContentSource source;
   final ContentType type;
   final int width;
@@ -201,42 +221,45 @@ class MediaObject {
   MediaObject(
       {this.url,
       this.audioUrl,
+      this.videoThumbUrl,
       this.source,
       this.type,
       this.width,
       this.height});
 
   //  need to handle link parsing/checking etc.
-  factory MediaObject.fromJson(Map<String, dynamic> json) {    
+  factory MediaObject.fromJson(Map<String, dynamic> json) {
     String url = json['data']['url'];
-    ContentSource source = _parseForSource(url);
+    ContentSource source = _parseForSource(json);
     ContentType type = _parseForType(json, url, source);
     int width = 0, height = 0;
-    //  reddit api doesn't give aspect ratio of GIFVs, and that won't get us a good aspect ratio so I've decided to leave it out for now
-    //  TODO: ADD PROPER GIFV SUPPORT, maybe by figuring out to how to handle videoController.value.size
-    //       - NOTE: THIS IS THE ONLY PLACE I HAVE HERE THAT ACTUALLY FILTERS GIFV OUT, ALL OTHER GIFV CODE IS INTACT, but only some of the code needed to make it work exists rn
-    if (source == ContentSource.OTHER || type == ContentType.GIFV) {
+    String audioUrl;
+    String videoThumbUrl;
+    if (source == ContentSource.OTHER ||
+        type == ContentType.OTHER ||
+        json['data']['is_meta'] ||
+        json['data']['is_self']) {
       return null;
     }
 
     if (type != ContentType.IMAGE) {
-      url = _parseSpecialType(json, url, type);
+      List<String> urlAndPreview = _parseSpecialType(json, url, type, source);
+      url = urlAndPreview[0];
+      videoThumbUrl = urlAndPreview[1];
       Map<String, int> dimensions = _parseDimensions(json, source);
       width = dimensions['width'];
       height = dimensions['height'];
     } else if (source == ContentSource.IMGUR) {
-      url = _parseImgurImageURL(url);
+      url = _parseImgurImageUrl(
+          url); //  images, if submitted as links to imgur.com (not gallery posts, just single images), need to be parsed to actually get the image
     }
-    String audioUrl = "";
-    if (source == ContentSource.REDDIT &&
-        type == ContentType.VIDEO &&
-        !json['data']['media']['reddit_video']['is_gif']) {
-      audioUrl = json['data']['url'] + '/audio';
-    }
+
+    audioUrl = _parseForAudioUrl(json, type, source);
 
     return MediaObject(
         url: url,
         audioUrl: audioUrl,
+        videoThumbUrl: videoThumbUrl,
         source: source,
         type: type,
         width: width,
@@ -252,6 +275,9 @@ class MediaObject {
       sourceInfoMap = media['oembed'];
     } else if (source == ContentSource.REDDIT) {
       sourceInfoMap = media['reddit_video'];
+    } else if (source == ContentSource.IMGUR) {
+      // this is how we support GIFVs, by ripping reddit's preview which has height/width info
+      sourceInfoMap = json['data']['preview']['reddit_video_preview'];
     } else {
       throw new Exception('Source specified is not Gfycat or Reddit Video.');
     }
@@ -261,29 +287,37 @@ class MediaObject {
     return res;
   }
 
-  static String _parseSpecialType(
-      Map<String, dynamic> json, String url, ContentType type) {
+  static List<String> _parseSpecialType(Map<String, dynamic> json, String url,
+      ContentType type, ContentSource source) {
+    List<String> urlAndPreview = new List(2);
     if (type == ContentType.GFY) {
       final String url = json['data']['media']['oembed']['thumbnail_url'];
-      return 'https://giant' + url.substring(14, url.length - 20) + '.mp4';
+      urlAndPreview[0] =
+          'https://giant' + url.substring(14, url.length - 20) + '.mp4';
+    } else if (type == ContentType.GIFV) {
+      urlAndPreview[0] =
+          json['data']['preview']['reddit_video_preview']['fallback_url'];
+    } else if (type == ContentType.VIDEO && source == ContentSource.REDDIT) {
+      urlAndPreview[0] = json['data']['media']['reddit_video']['fallback_url'];
     }
-    if (type == ContentType.GIFV) {
-      return url.substring(0, url.length - 4) + 'mp4';
-    }
-    if (type == ContentType.VIDEO) {
-      return json['data']['media']['reddit_video']['fallback_url'];
-    }
-    return null;
+    urlAndPreview[1] = json['data']['thumbnail'];
+    return urlAndPreview;
   }
 
-  static ContentSource _parseForSource(String url) {
-    if (url.contains('gfycat')) {
+  static ContentSource _parseForSource(Map<String, dynamic> json) {
+    if (json['data']['domain'] == 'gfycat.com') {
       return ContentSource.GFYCAT;
     }
-    if (url.contains('imgur')) {
+    if (json['data']['domain'] == 'i.imgur.com' ||
+        json['data']['domain'] == 'imgur.com') {
       return ContentSource.IMGUR;
     }
-    if (url.contains('redd.it')) {
+    bool iREDDIT = json['data']['domain'] == 'i.redd.it';
+    if (json['data']['domain'] == 'v.redd.it' || iREDDIT) {
+      if (iREDDIT &&
+          json['data']['url'].contains(
+              '.gif')) // is there a fix? actual gifs load really slowly, so we're ditching them altogether.
+        return ContentSource.OTHER;
       return ContentSource.REDDIT;
     }
     return ContentSource.OTHER;
@@ -296,15 +330,37 @@ class MediaObject {
     }
     if (json['data']['is_video']) {
       return ContentType.VIDEO;
+    } else if (json['data']['domain'] == 'v.redd.it') {
+      // if it's v.reddit but NOT a video, then it must be something fucked up
+      return ContentType.OTHER;
     }
     if (url.contains('gifv')) {
       return ContentType.GIFV;
+    } else if (url.contains('/gallery/') || url.contains('imgur.com/a/')) {
+      //  not supporting imgur albums and such right now
+      return ContentType.OTHER;
     }
+
     return ContentType
         .IMAGE; //  this should be more thorough if we do it on the backend
   }
 
-  static String _parseImgurImageURL(String url) {
+  static String _parseForAudioUrl(
+      Map<String, dynamic> json, ContentType type, ContentSource source) {
+    if (source == ContentSource.REDDIT &&
+        type == ContentType.VIDEO &&
+        !json['data']['media']['reddit_video']['is_gif']) {
+      return json['data']['url'] + '/audio';
+    } else if (source == ContentSource.IMGUR &&
+        type == ContentType.GIFV &&
+        !json['data']['preview']['reddit_video_preview']['is_gif']) {
+      //  TODO: GIFV WITH SOUND NOT SUPPORTED ATM, IDK IF GETTING THE AUDIO URL VIA REDDIT VIDEO WILL EVEN WORK
+      return "";
+    }
+    return "";
+  }
+
+  static String _parseImgurImageUrl(String url) {
     if (url.contains('i.imgur')) {
       return url;
     }
@@ -318,5 +374,6 @@ enum ContentType {
   GFY,
   GIFV,
   IMAGE,
-  VIDEO //  gifs are considered images
+  VIDEO, //  gifs are considered images
+  OTHER
 }
