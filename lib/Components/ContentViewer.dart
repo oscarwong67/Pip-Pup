@@ -46,6 +46,7 @@ class ContentViewerState extends State<ContentViewer> {
       this.currentIndex--;
     } else {
       newPages = this.pages;
+      return; //  this case is because _movePage is called by the "animateToPage" call below
     }
     newPages[0] = _renderCurrentContent(this.currentIndex - 1);
     newPages[1] = _renderCurrentContent(this.currentIndex);
@@ -53,41 +54,43 @@ class ContentViewerState extends State<ContentViewer> {
 
     newPages = newPages.where((child) => child != null).toList();
 
+    _pauseIfNeeded(this.videoController);
+    _pauseIfNeeded(this.audioController);
+
     setState(() {
       this.pages = newPages;
       this.currentPage = ((this.pages.length - 1) / 2).floor();
       pageController.animateToPage(this.currentPage,
-          duration: const Duration(milliseconds: 300), curve: Curves.decelerate);
-    });
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.decelerate);
+      if (this.videoController != null) {
+        this.videoController.initialize().then((_) {
+          this.videoController.play();
+        });
+      }
+    });    
   }
 
   // build a single video
   Widget _buildVideo(MediaObject mediaObj) {
     if (this.mediaObjects[this.currentIndex].url == mediaObj.url) {
-      setState(() {
-        videoController = new VideoPlayerController.network(mediaObj.url);
-      });
+      this.videoController = new VideoPlayerController.network(mediaObj.url);
+
       //  Reddit videos have audio hosted seperately, so we need to play both at once
       if (mediaObj.source == ContentSource.REDDIT)
-        audioController = new VideoPlayerController.network(mediaObj.audioUrl);
+        this.audioController = new VideoPlayerController.network(mediaObj.audioUrl);
       //  listen for when it's actually the current page
-      videoController.addListener(() {
-        if (videoController.value.isPlaying && mediaObj.audioUrl.length > 0) {
-          if (!audioController.value.initialized) {
-            audioController.initialize().then((_) {
-              audioController.play();
-            });
-          } else {
-            audioController.play();
-          }
+      this.videoController.addListener(() {
+        if (this.videoController.value.isPlaying && mediaObj.audioUrl.length > 0) {
+          this.audioController.play();
         }
       });
       return new Stack(
         children: <Widget>[
           new Chewie(
-            videoController,
-            autoPlay: true,
-            autoInitialize: true,
+            this.videoController,
+            autoPlay: false,  //  autoplay is buggy and doesn't always trip off the listener for some reason
+            autoInitialize: false,  //  autoinitialize isn't consistent in terms of knowing "when" it's initialized, and we want it to be consistent
             looping: true,
             aspectRatio: mediaObj.width / mediaObj.height,
             showControls: false,
@@ -100,8 +103,9 @@ class ContentViewerState extends State<ContentViewer> {
               ? new Opacity(
                   opacity: 0.0,
                   child: new Chewie(
-                    audioController,
+                    this.audioController,
                     autoPlay: false,
+                    autoInitialize: true,
                     looping: true,
                     showControls: false,
                   ),
@@ -126,8 +130,15 @@ class ContentViewerState extends State<ContentViewer> {
 
       if (mediaObj.type == ContentType.IMAGE) {
         content = TransitionToImage(
-            AdvancedNetworkImage(mediaObj.url, useDiskCache: false),
-            placeholder: new CircularProgressIndicator());
+          AdvancedNetworkImage(
+            mediaObj.url,
+            useDiskCache: false,
+            retryDuration: const Duration(milliseconds: 500),
+            retryLimit: 4,
+          ),
+          placeholder: const Icon(Icons.refresh),
+          loadingWidget: const CircularProgressIndicator(),  //  TODO: use the preview image link here?
+        );
       } else if (mediaObj.type == ContentType.GFY ||
           mediaObj.type == ContentType.GIFV ||
           mediaObj.type == ContentType.VIDEO) {
@@ -149,7 +160,9 @@ class ContentViewerState extends State<ContentViewer> {
         _renderCurrentContent(this.currentIndex + 1),
       ].where((child) => child != null).toList();
       if (this.videoController != null) {
-        this.videoController.play();
+        this.videoController.initialize().then((_) {
+          this.videoController.play();
+        });
       }
     }
     return new PageView(
@@ -163,9 +176,10 @@ class ContentViewerState extends State<ContentViewer> {
   }
 
   void _pauseIfNeeded(VideoPlayerController controller) {
-    if (controller != null &&
-        controller.value.initialized &&
-        controller.value.isPlaying) controller.pause();
+    if (controller != null && controller.value.initialized && controller.value.isPlaying) {
+      controller.pause();
+      controller.dispose();
+    }
   }
 
   // @override
@@ -340,9 +354,13 @@ class MediaObject {
       //  not supporting imgur albums and such right now
       return ContentType.OTHER;
     }
-
-    return ContentType
-        .IMAGE; //  this should be more thorough if we do it on the backend
+    if (url.contains('.gif') ||
+        url.contains('.jpg') ||
+        url.contains('.png') ||
+        url.contains('.jpeg')) {
+      return ContentType.IMAGE;
+    }
+    return ContentType.OTHER;
   }
 
   static String _parseForAudioUrl(
