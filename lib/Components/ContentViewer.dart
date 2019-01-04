@@ -320,6 +320,9 @@ class MediaObject {
 
   static ContentSource _parseForSource(Map<String, dynamic> json) {
     if (json['data']['domain'] == 'gfycat.com') {
+      if (json['data']['media'] == null) {  //  needed for stuff like dimensions and thumbnail url
+        return ContentSource.OTHER;
+      }
       return ContentSource.GFYCAT;
     }
     if (json['data']['domain'] == 'i.imgur.com' ||
