@@ -61,6 +61,7 @@ class ContentViewerState extends State<ContentViewer> {
       this.currentPage = pageId;
       this.videoController = this.mediaObjects[this.currentIndex].videoController;
       this.audioController = this.mediaObjects[this.currentIndex].audioController;
+      this.pageController.animateToPage(this.currentPage, duration: const Duration(milliseconds: 700), curve: Curves.ease);
       if (this.videoController != null) {
         this.videoController.play();
       }
@@ -150,7 +151,7 @@ class ContentViewerState extends State<ContentViewer> {
       this.pagesGenerated = true;
     }
     return new PageView(
-      children: this.pages,
+      children: this.pages, //  TODO: Should we be using a builder instead?
       controller: pageController,
       scrollDirection: Axis.vertical,
       onPageChanged: (pageId) {
