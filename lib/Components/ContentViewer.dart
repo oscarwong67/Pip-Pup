@@ -13,7 +13,9 @@ class ContentViewerState extends State<ContentViewer> {
       3; //  our current chunk size is gonna be 3 for how much content to render at once
 
   List<MediaObject> mediaObjects = <MediaObject>[];
+  bool mediaObjectsLoaded = false;  
   List<Widget> pages = <Widget>[];
+  bool pagesGenerated = false;
   final PageController pageController = new PageController();
   VideoPlayerController videoController;
   VideoPlayerController audioController;
@@ -29,6 +31,9 @@ class ContentViewerState extends State<ContentViewer> {
           data.map<MediaObject>((json) => MediaObject.fromJson(json)).toList();
       setState(() {
         mediaObjects = mediaObjects.where((obj) => obj != null).toList();
+        videoController = mediaObjects[this.currentIndex].videoController;
+        audioController = mediaObjects[this.currentIndex].audioController;
+        mediaObjectsLoaded = true;
       });
     } else {
       throw Exception('Failed to fetch data from reddit!');
@@ -38,59 +43,44 @@ class ContentViewerState extends State<ContentViewer> {
 
   //  go to next piece of content and handle if you need to go to the next chunk
   void _movePage(int pageId) {
-    List<Widget> newPages = new List(CHUNK_SIZE);
     //  swipe down
     if (pageId > this.currentPage) {
       this.currentIndex++;
     } else if (pageId < this.currentPage) {
       this.currentIndex--;
     } else {
-      newPages = this.pages;
       return; //  this case is because _movePage is called by the "animateToPage" call below
     }
-    newPages[0] = _renderCurrentContent(this.currentIndex - 1);
-    newPages[1] = _renderCurrentContent(this.currentIndex);
-    newPages[2] = _renderCurrentContent(this.currentIndex + 1);
 
-    newPages = newPages.where((child) => child != null).toList();
+    // newPages = newPages.where((child) => child != null).toList();
 
     _pauseIfNeeded(this.videoController);
     _pauseIfNeeded(this.audioController);
 
     setState(() {
-      this.pages = newPages;
-      this.currentPage = ((this.pages.length - 1) / 2).floor();
-      pageController.animateToPage(this.currentPage,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.decelerate);
+      this.currentPage = pageId;
+      this.videoController = this.mediaObjects[this.currentIndex].videoController;
+      this.audioController = this.mediaObjects[this.currentIndex].audioController;
       if (this.videoController != null) {
-        this.videoController.initialize().then((_) {
-          this.videoController.play();
-        });
+        this.videoController.play();
       }
     });    
   }
 
   // build a single video
   Widget _buildVideo(MediaObject mediaObj) {
-    if (this.mediaObjects[this.currentIndex].url == mediaObj.url) {
-      this.videoController = new VideoPlayerController.network(mediaObj.url);
-
-      //  Reddit videos have audio hosted seperately, so we need to play both at once
-      if (mediaObj.source == ContentSource.REDDIT)
-        this.audioController = new VideoPlayerController.network(mediaObj.audioUrl);
-      //  listen for when it's actually the current page
-      this.videoController.addListener(() {
-        if (this.videoController.value.isPlaying && mediaObj.audioUrl.length > 0) {
-          this.audioController.play();
+    //  listen for when it's actually the current page
+      mediaObj.videoController.addListener(() {
+        if (mediaObj.videoController.value.isPlaying && mediaObj.audioController != null) {
+          mediaObj.audioController.play();
         }
       });
       return new Stack(
         children: <Widget>[
           new Chewie(
-            this.videoController,
+            mediaObj.videoController,
             autoPlay: false,  //  autoplay is buggy and doesn't always trip off the listener for some reason
-            autoInitialize: false,  //  autoinitialize isn't consistent in terms of knowing "when" it's initialized, and we want it to be consistent
+            autoInitialize: true,
             looping: true,
             aspectRatio: mediaObj.width / mediaObj.height,
             showControls: false,
@@ -99,11 +89,11 @@ class ContentViewerState extends State<ContentViewer> {
                     CircularProgressIndicator()), //  TODO: write custom controls that also pause/play the audio at the same time.
           ),
           //  invisible video player to play audio for reddit videos
-          (mediaObj.source == ContentSource.REDDIT)
+          (mediaObj.source == ContentSource.REDDIT && mediaObj.audioController != null)
               ? new Opacity(
                   opacity: 0.0,
                   child: new Chewie(
-                    this.audioController,
+                    mediaObj.audioController,
                     autoPlay: false,
                     autoInitialize: true,
                     looping: true,
@@ -114,10 +104,6 @@ class ContentViewerState extends State<ContentViewer> {
           //  if the current source isn't reddit, then playing audio seperately isn't a problem, but "null" isn't a valid child widget value so filter it
         ].where((child) => child != null).toList(), //  remove null children
       );
-    } else {
-      return new TransitionToImage(
-          AdvancedNetworkImage(mediaObj.videoThumbUrl, useDiskCache: false));
-    }
   }
 
   //  create a list of content of size CHUNK_SIZE
@@ -153,17 +139,15 @@ class ContentViewerState extends State<ContentViewer> {
   }
 
   Widget _renderCurrentPage() {
-    if (this.pages.isEmpty) {
-      //  skip "previous" since you're at the beginning
-      this.pages = <Widget>[
-        _renderCurrentContent(this.currentIndex),
-        _renderCurrentContent(this.currentIndex + 1),
-      ].where((child) => child != null).toList();
-      if (this.videoController != null) {
-        this.videoController.initialize().then((_) {
-          this.videoController.play();
-        });
+    if (this.mediaObjectsLoaded && !this.pagesGenerated) {
+      for (int i = 0; i < mediaObjects.length; i++) {
+        this.pages.add(_renderCurrentContent(i));
       }
+      this.pages = this.pages.where((child) => child != null).toList();
+      if (this.videoController != null) {
+        this.videoController.play();
+      }
+      this.pagesGenerated = true;
     }
     return new PageView(
       children: this.pages,
@@ -178,7 +162,6 @@ class ContentViewerState extends State<ContentViewer> {
   void _pauseIfNeeded(VideoPlayerController controller) {
     if (controller != null && controller.value.initialized && controller.value.isPlaying) {
       controller.pause();
-      controller.dispose();
     }
   }
 
@@ -231,6 +214,8 @@ class MediaObject {
   final ContentType type;
   final int width;
   final int height;
+  final VideoPlayerController videoController;
+  final VideoPlayerController audioController;
 
   MediaObject(
       {this.url,
@@ -239,7 +224,9 @@ class MediaObject {
       this.source,
       this.type,
       this.width,
-      this.height});
+      this.height,
+      this.videoController,
+      this.audioController});
 
   //  need to handle link parsing/checking etc.
   factory MediaObject.fromJson(Map<String, dynamic> json) {
@@ -249,6 +236,8 @@ class MediaObject {
     int width = 0, height = 0;
     String audioUrl;
     String videoThumbUrl;
+    VideoPlayerController videoController;
+    VideoPlayerController audioController;
     if (source == ContentSource.OTHER ||
         type == ContentType.OTHER ||
         json['data']['is_meta'] ||
@@ -257,18 +246,21 @@ class MediaObject {
     }
 
     if (type != ContentType.IMAGE) {
-      List<String> urlAndPreview = _parseSpecialType(json, url, type, source);
+      List<String> urlAndPreview = _parseSpecialTypeUrl(json, url, type, source);
       url = urlAndPreview[0];
       videoThumbUrl = urlAndPreview[1];
       Map<String, int> dimensions = _parseDimensions(json, source);
       width = dimensions['width'];
-      height = dimensions['height'];
+      height = dimensions['height'];      
     } else if (source == ContentSource.IMGUR) {
       url = _parseImgurImageUrl(
           url); //  images, if submitted as links to imgur.com (not gallery posts, just single images), need to be parsed to actually get the image
     }
 
     audioUrl = _parseForAudioUrl(json, type, source);
+    List<VideoPlayerController> videoAndAudio = _createControllers(url, audioUrl, type, source);
+    videoController = videoAndAudio[0];
+    audioController = videoAndAudio[1];
 
     return MediaObject(
         url: url,
@@ -277,7 +269,9 @@ class MediaObject {
         source: source,
         type: type,
         width: width,
-        height: height);
+        height: height,
+        videoController: videoController,
+        audioController: audioController);
   }
 
   static Map<String, int> _parseDimensions(
@@ -301,7 +295,7 @@ class MediaObject {
     return res;
   }
 
-  static List<String> _parseSpecialType(Map<String, dynamic> json, String url,
+  static List<String> _parseSpecialTypeUrl(Map<String, dynamic> json, String url,
       ContentType type, ContentSource source) {
     List<String> urlAndPreview = new List(2);
     if (type == ContentType.GFY) {
@@ -316,6 +310,27 @@ class MediaObject {
     }
     urlAndPreview[1] = json['data']['thumbnail'];
     return urlAndPreview;
+  }
+
+  static List<VideoPlayerController> _createControllers(String url, String audioUrl, ContentType type, ContentSource source) {
+    VideoPlayerController videoController;
+    VideoPlayerController audioController;
+    List<VideoPlayerController> res = new List(2);
+    if (url == null || url.length == 0 || type == ContentType.IMAGE) {
+      videoController = null;
+      audioController = null;      
+    } else {
+      videoController = new VideoPlayerController.network(url);
+      if (audioUrl == null || audioUrl.length == 0) {
+        audioController = null;
+      } else {
+        audioController = new VideoPlayerController.network(audioUrl);
+      }
+    }
+    
+    res[0] = videoController;
+    res[1] = audioController;
+    return res;
   }
 
   static ContentSource _parseForSource(Map<String, dynamic> json) {
