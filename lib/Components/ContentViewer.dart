@@ -140,7 +140,7 @@ class ContentViewerState extends State<ContentViewer> {
       }
       this.pagesGenerated = true;
     }
-    //  TODO: This implementation meant that content loaded on demand - so it's slightly lower than having all 25 preloaded at once ala above
+    //  TODO: This implementation meant that content loaded on demand - so it's slightly slower than having all 25 preloaded at once ala above
     // return new PageView.builder(
     //   controller: pageController,
     //   scrollDirection: Axis.vertical,
