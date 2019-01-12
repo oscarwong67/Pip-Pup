@@ -12,7 +12,6 @@ import '../Classes/MediaObject.dart';
 
 class ContentViewerState extends State<ContentViewer> {
   List<MediaObject> mediaObjects = <MediaObject>[];
-  List<Widget> pages = <Widget>[];
   bool mediaObjectsLoaded = false;
   bool pagesGenerated = false;
   final PageController pageController = new PageController(keepPage: false);
@@ -131,34 +130,21 @@ class ContentViewerState extends State<ContentViewer> {
   Widget _renderCurrentPage() {
     //  in case we need to play video for the very first piece of content we see
     if (this.mediaObjectsLoaded && !this.pagesGenerated) {
-      for (int i = 0; i < mediaObjects.length; i++) {
-        this.pages.add(_renderCurrentContent(i));
-      }
-      this.pages = this.pages.where((child) => child != null).toList();
       if (this.videoController != null) {
         this.videoController.play();
       }
       this.pagesGenerated = true;
     }
-    //  TODO: This implementation meant that content loaded on demand - so it's slightly slower than having all 25 preloaded at once ala above
-    // return new PageView.builder(
-    //   controller: pageController,
-    //   scrollDirection: Axis.vertical,
-    //   onPageChanged: (pageId) {
-    //     _movePage(pageId);
-    //   },
-    //   itemBuilder: (BuildContext context, int index) {
-    //     return _renderCurrentContent(index);
-    //   },
-    //   itemCount: this.mediaObjects.length
-    // );
-    return new PageView(
-      children: this.pages,
+    return new PageView.builder(
       controller: pageController,
       scrollDirection: Axis.vertical,
       onPageChanged: (pageId) {
         _movePage(pageId);
       },
+      itemBuilder: (BuildContext context, int index) {
+        return _renderCurrentContent(index);
+      },
+      itemCount: this.mediaObjects.length
     );
   }
 
