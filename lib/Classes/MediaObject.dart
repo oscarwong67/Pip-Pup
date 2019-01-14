@@ -1,5 +1,3 @@
-import 'package:video_player/video_player.dart';
-
 class MediaObject {
   final String url;
   final String audioUrl;
@@ -8,8 +6,6 @@ class MediaObject {
   final ContentType type;
   final int width;
   final int height;
-  final VideoPlayerController videoController;
-  final VideoPlayerController audioController;
 
   MediaObject(
       {this.url,
@@ -18,9 +14,7 @@ class MediaObject {
       this.source,
       this.type,
       this.width,
-      this.height,
-      this.videoController,
-      this.audioController});
+      this.height});
 
   //  need to handle link parsing/checking etc.
   factory MediaObject.fromJson(Map<String, dynamic> json) {
@@ -30,8 +24,6 @@ class MediaObject {
     int width = 0, height = 0;
     String audioUrl;
     String videoThumbUrl;
-    VideoPlayerController videoController;
-    VideoPlayerController audioController;
     if (source == ContentSource.OTHER ||
         type == ContentType.OTHER ||
         json['data']['is_meta'] ||
@@ -52,9 +44,6 @@ class MediaObject {
     }
 
     audioUrl = _parseForAudioUrl(json, type, source);
-    List<VideoPlayerController> videoAndAudio = _createControllers(url, audioUrl, type, source);
-    videoController = videoAndAudio[0];
-    audioController = videoAndAudio[1];
 
     return MediaObject(
         url: url,
@@ -63,9 +52,7 @@ class MediaObject {
         source: source,
         type: type,
         width: width,
-        height: height,
-        videoController: videoController,
-        audioController: audioController);
+        height: height,);
   }
 
   static Map<String, int> _parseDimensions(
@@ -104,27 +91,6 @@ class MediaObject {
     }
     urlAndPreview[1] = json['data']['thumbnail'];
     return urlAndPreview;
-  }
-
-  static List<VideoPlayerController> _createControllers(String url, String audioUrl, ContentType type, ContentSource source) {
-    VideoPlayerController videoController;
-    VideoPlayerController audioController;
-    List<VideoPlayerController> res = new List(2);
-    if (url == null || url.length == 0 || type == ContentType.IMAGE) {
-      videoController = null;
-      audioController = null;      
-    } else {
-      videoController = new VideoPlayerController.network(url);
-      if (audioUrl == null || audioUrl.length == 0) {
-        audioController = null;
-      } else {
-        audioController = new VideoPlayerController.network(audioUrl);
-      }
-    }
-    
-    res[0] = videoController;
-    res[1] = audioController;
-    return res;
   }
 
   static ContentSource _parseForSource(Map<String, dynamic> json) {

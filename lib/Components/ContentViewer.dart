@@ -12,9 +12,7 @@ import '../Classes/MediaObject.dart';
 
 class ContentViewerState extends State<ContentViewer> {
   List<MediaObject> mediaObjects = <MediaObject>[];
-  bool mediaObjectsLoaded = false;
-  bool pagesGenerated = false;
-  final PageController pageController = new PageController(keepPage: false);
+  final PageController pageController = new PageController();
   VideoPlayerController videoController;
   VideoPlayerController audioController;
   int currentIndex;
@@ -31,67 +29,57 @@ class ContentViewerState extends State<ContentViewer> {
       return; //  this case is because _movePage is called by the "animateToPage" call below
     }
 
-    setState(() {
+    setState(() {      
+      this.currentPage = pageId;
+      //this.pageController.animateToPage(this.currentPage, duration: const Duration(milliseconds: 700), curve: Curves.ease);
       _pauseIfNeeded(this.audioController);
       _pauseIfNeeded(this.videoController);
-      this.currentPage = pageId;
-      this.videoController =
-          this.mediaObjects[this.currentIndex].videoController;
-      this.audioController =
-          this.mediaObjects[this.currentIndex].audioController;
-      this.pageController.animateToPage(this.currentPage,
-          duration: const Duration(milliseconds: 700), curve: Curves.ease);
-      if (this.videoController != null) {
-        this.videoController.play();
-      }
     });
   }
 
   // build a single video
   Widget _buildVideo(MediaObject mediaObj) {
-    //  listen for when it's actually the current page
-    mediaObj.videoController.addListener(() {
-      if (mediaObj.videoController.value.isPlaying &&
-          mediaObj.audioController != null) {
-        mediaObj.audioController.play();
+    if (this.mediaObjects[this.currentIndex] == mediaObj) {
+      this.videoController = new VideoPlayerController.network(mediaObj.url);
+      if (mediaObj.audioUrl != null && mediaObj.audioUrl.length > 0) {
+        this.audioController = new VideoPlayerController.network(mediaObj.audioUrl);
       }
-      if (!mediaObj.videoController.value.isPlaying &&
-          mediaObj.audioController != null &&
-          mediaObj.audioController.value.isPlaying) {
-        mediaObj.audioController.pause(); //  just in case audio doesn't pause
-      }
-    });
-    return new Stack(
-      children: <Widget>[
-        new Chewie(
-          mediaObj.videoController,
-          autoPlay:
-              false, //  autoplay is buggy and doesn't always trip off the listener for some reason
-          autoInitialize: true,
-          looping: true,
-          aspectRatio: mediaObj.width / mediaObj.height,
-          showControls: false,
-          placeholder: Center(
-              child:
-                  CircularProgressIndicator()), //  TODO: write custom controls that also pause/play the audio at the same time.
-        ),
-        //  invisible video player to play audio for reddit videos
-        (mediaObj.source == ContentSource.REDDIT &&
-                mediaObj.audioController != null)
-            ? new Opacity(
-                opacity: 0.0,
-                child: new Chewie(
-                  mediaObj.audioController,
-                  autoPlay: false,
-                  autoInitialize: true,
-                  looping: true,
-                  showControls: false,
-                ),
-              )
-            : null,
-        //  if the current source isn't reddit, then playing audio seperately isn't a problem, but "null" isn't a valid child widget value so filter it
-      ].where((child) => child != null).toList(), //  remove null children
-    );
+      //  listen for when it's actually the current page
+      this.videoController.addListener(_videoAudioListener);
+      return new Stack(
+        children: <Widget>[
+          new Chewie(
+            this.videoController,
+            autoPlay:
+                true,
+            autoInitialize: true,
+            looping: true,
+            aspectRatio: mediaObj.width / mediaObj.height,
+            showControls: false,
+            placeholder: Center(
+                child:
+                    CircularProgressIndicator()), //  TODO: write custom controls that also pause/play the audio at the same time.
+          ),
+          //  invisible video player to play audio for reddit videos
+          (mediaObj.source == ContentSource.REDDIT &&
+                  this.audioController != null)
+              ? new Opacity(
+                  opacity: 0.0,
+                  child: new Chewie(
+                    this.audioController,
+                    autoPlay: false,
+                    autoInitialize: true,
+                    looping: true,
+                    showControls: false,
+                  ),
+                )
+              : null,
+          //  if the current source isn't reddit, then playing audio seperately isn't a problem, but "null" isn't a valid child widget value so filter it
+        ].where((child) => child != null).toList(), //  remove null children
+      );
+    } else {
+      return new CircularProgressIndicator(); //  TODO: put image placeholder or something
+    }
   }
 
   //  create a list of content of size CHUNK_SIZE
@@ -128,25 +116,29 @@ class ContentViewerState extends State<ContentViewer> {
   }
 
   Widget _renderCurrentPage() {
-    //  in case we need to play video for the very first piece of content we see
-    if (this.mediaObjectsLoaded && !this.pagesGenerated) {
-      if (this.videoController != null) {
-        this.videoController.play();
-      }
-      this.pagesGenerated = true;
-    }
     return new PageView.builder(
-      controller: pageController,
-      scrollDirection: Axis.vertical,
-      onPageChanged: (pageId) {
-        _movePage(pageId);
-      },
-      itemBuilder: (BuildContext context, int index) {
-        return _renderCurrentContent(index);
-      },
-      itemCount: this.mediaObjects.length
-    );
+        controller: pageController,
+        scrollDirection: Axis.vertical,
+        onPageChanged: (pageId) {
+          _movePage(pageId);
+        },
+        itemBuilder: (BuildContext context, int index) {
+          return _renderCurrentContent(index);
+        },
+        itemCount: this.mediaObjects.length);
   }
+
+  void _videoAudioListener() {
+        if (this.videoController.value.isPlaying &&
+            this.audioController != null) {
+          this.audioController.play();
+        }
+        if (!this.videoController.value.isPlaying &&
+            this.audioController != null &&
+            this.audioController.value.isPlaying) {
+          this.audioController.pause(); //  just in case audio doesn't pause
+        }
+      }
 
   //  fetches data from reddit, then parses it
   Future<Null> _fetchLinks() async {
@@ -157,9 +149,6 @@ class ContentViewerState extends State<ContentViewer> {
           data.map<MediaObject>((json) => MediaObject.fromJson(json)).toList();
       setState(() {
         mediaObjects = mediaObjects.where((obj) => obj != null).toList();
-        videoController = mediaObjects[this.currentIndex].videoController;
-        audioController = mediaObjects[this.currentIndex].audioController;
-        mediaObjectsLoaded = true;
       });
     } else {
       throw Exception('Failed to fetch data from reddit!');
@@ -172,6 +161,7 @@ class ContentViewerState extends State<ContentViewer> {
         controller.value.initialized &&
         controller.value.isPlaying) {
       controller.pause();
+      controller.removeListener(_videoAudioListener);
     }
   }
 
