@@ -29,7 +29,7 @@ class ContentViewerState extends State<ContentViewer> {
       return; //  this case is because _movePage is called by the "animateToPage" call below
     }
 
-    setState(() {      
+    setState(() {
       this.currentPage = pageId;
       //this.pageController.animateToPage(this.currentPage, duration: const Duration(milliseconds: 700), curve: Curves.ease);
       _pauseIfNeeded(this.audioController);
@@ -42,7 +42,8 @@ class ContentViewerState extends State<ContentViewer> {
     if (this.mediaObjects[this.currentIndex] == mediaObj) {
       this.videoController = new VideoPlayerController.network(mediaObj.url);
       if (mediaObj.audioUrl != null && mediaObj.audioUrl.length > 0) {
-        this.audioController = new VideoPlayerController.network(mediaObj.audioUrl);
+        this.audioController =
+            new VideoPlayerController.network(mediaObj.audioUrl);
       }
       //  listen for when it's actually the current page
       this.videoController.addListener(_videoAudioListener);
@@ -50,8 +51,7 @@ class ContentViewerState extends State<ContentViewer> {
         children: <Widget>[
           new Chewie(
             this.videoController,
-            autoPlay:
-                true,
+            autoPlay: true,
             autoInitialize: true,
             looping: true,
             aspectRatio: mediaObj.width / mediaObj.height,
@@ -129,16 +129,15 @@ class ContentViewerState extends State<ContentViewer> {
   }
 
   void _videoAudioListener() {
-        if (this.videoController.value.isPlaying &&
-            this.audioController != null) {
-          this.audioController.play();
-        }
-        if (!this.videoController.value.isPlaying &&
-            this.audioController != null &&
-            this.audioController.value.isPlaying) {
-          this.audioController.pause(); //  just in case audio doesn't pause
-        }
-      }
+    if (this.videoController.value.isPlaying && this.audioController != null) {
+      this.audioController.play();
+    }
+    if (!this.videoController.value.isPlaying &&
+        this.audioController != null &&
+        this.audioController.value.isPlaying) {
+      this.audioController.pause(); //  just in case audio doesn't pause
+    }
+  }
 
   //  fetches data from reddit, then parses it
   Future<Null> _fetchLinks() async {
