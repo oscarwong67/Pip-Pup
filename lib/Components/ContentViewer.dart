@@ -161,6 +161,7 @@ class ContentViewerState extends State<ContentViewer> {
         controller.value.isPlaying) {
       controller.pause();
       controller.removeListener(_videoAudioListener);
+      controller.dispose();
     }
   }
 
