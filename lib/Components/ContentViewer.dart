@@ -39,10 +39,19 @@ class ContentViewerState extends State<ContentViewer> {
   Widget _buildVideo(MediaObject mediaObj) {
     //  error check - in case elements are being pre-built and saved rather than built on-demand.
     if (this.mediaObjects[this.currentIndex] == mediaObj) {
+      if (this.videoController != null) {
+        this.videoController.dispose();
+      }
+      if (this.audioController != null) {
+        this.audioController.dispose();
+      }
+
       this.videoController = new VideoPlayerController.network(mediaObj.url);
       if (mediaObj.audioUrl != null && mediaObj.audioUrl.length > 0) {
         this.audioController =
             new VideoPlayerController.network(mediaObj.audioUrl);
+      } else {
+        this.audioController = null;
       }
       //  listen for when it's actually the current page
       this.videoController.addListener(_videoAudioListener);
@@ -159,7 +168,6 @@ class ContentViewerState extends State<ContentViewer> {
         controller.value.initialized &&
         controller.value.isPlaying) {
       controller.pause();      
-      // controller.dispose();   //  TODO: move this to a more "safe" way where it doesn't dispose until fully off screen
     }
   }
 
