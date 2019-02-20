@@ -25,20 +25,19 @@ class ContentViewerState extends State<ContentViewer> {
       this.currentIndex++;
     } else if (pageId < this.currentPage) {
       this.currentIndex--;
-    } else {
-      return; //  this case is because _movePage is called by the "animateToPage" call below
     }
 
     setState(() {
       this.currentPage = pageId;
-      //this.pageController.animateToPage(this.currentPage, duration: const Duration(milliseconds: 700), curve: Curves.ease);
       _pauseIfNeeded(this.audioController);
       _pauseIfNeeded(this.videoController);
+      videoController.removeListener(_videoAudioListener);
     });
   }
 
   // build a single video
   Widget _buildVideo(MediaObject mediaObj) {
+    //  error check - in case elements are being pre-built and saved rather than built on-demand.
     if (this.mediaObjects[this.currentIndex] == mediaObj) {
       this.videoController = new VideoPlayerController.network(mediaObj.url);
       if (mediaObj.audioUrl != null && mediaObj.audioUrl.length > 0) {
@@ -135,7 +134,7 @@ class ContentViewerState extends State<ContentViewer> {
     if (!this.videoController.value.isPlaying &&
         this.audioController != null &&
         this.audioController.value.isPlaying) {
-      this.audioController.pause(); //  just in case audio doesn't pause
+      this.audioController.pause(); //  just in case audio doesn't pause off of _pauseIfNeeded()
     }
   }
 
@@ -159,9 +158,8 @@ class ContentViewerState extends State<ContentViewer> {
     if (controller != null &&
         controller.value.initialized &&
         controller.value.isPlaying) {
-      controller.pause();
-      controller.removeListener(_videoAudioListener);
-      controller.dispose();   //  TODO: move this to a more "safe" way where it doesn't dispose until fully off screen
+      controller.pause();      
+      // controller.dispose();   //  TODO: move this to a more "safe" way where it doesn't dispose until fully off screen
     }
   }
 
